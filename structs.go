@@ -2,34 +2,34 @@
 package structs
 
 import (
-	"fmt"
-
-	"reflect"
+    "fmt"
+    "reflect"
+    "strings"
 )
 
 var (
-	// DefaultTagName is the default tag name for struct fields which provides
-	// a more granular to tweak certain structs. Lookup the necessary functions
-	// for more info.
-	DefaultTagName = "structs" // struct's field default tag name
+    // DefaultTagName is the default tag name for struct fields which provides
+    // a more granular to tweak certain structs. Lookup the necessary functions
+    // for more info.
+    DefaultTagName = "structs" // struct's field default tag name
 )
 
 // Struct encapsulates a struct type to provide several high level functions
 // around the struct.
 type Struct struct {
-	raw     interface{}
-	value   reflect.Value
-	TagName string
+    raw     interface{}
+    value   reflect.Value
+    TagName string
 }
 
 // New returns a new *Struct with the struct s. It panics if the s's kind is
 // not struct.
 func New(s interface{}) *Struct {
-	return &Struct{
-		raw:     s,
-		value:   strctVal(s),
-		TagName: DefaultTagName,
-	}
+    return &Struct{
+        raw:     s,
+        value:   strctVal(s),
+        TagName: DefaultTagName,
+    }
 }
 
 // Map converts the given struct to a map[string]interface{}, where the keys
@@ -79,74 +79,80 @@ func New(s interface{}) *Struct {
 // Note that only exported fields of a struct can be accessed, non exported
 // fields will be neglected.
 func (s *Struct) Map() map[string]interface{} {
-	out := make(map[string]interface{})
-	s.FillMap(out)
-	return out
+    out := make(map[string]interface{})
+    s.FillMap(out)
+    return out
 }
 
 // FillMap is the same as Map. Instead of returning the output, it fills the
 // given map.
 func (s *Struct) FillMap(out map[string]interface{}) {
-	if out == nil {
-		return
-	}
+    if out == nil {
+        return
+    }
 
-	fields := s.structFields()
+    fields := s.structFields()
 
-	for _, field := range fields {
-		name := field.Name
-		val := s.value.FieldByName(name)
-		isSubStruct := false
-		var finalVal interface{}
+    for _, field := range fields {
+        name := field.Name
+        val := s.value.FieldByName(name)
+        isSubStruct := false
+        var finalVal interface{}
 
-		tagName, tagOpts := parseTag(field.Tag.Get(s.TagName))
-		if tagName != "" {
-			name = tagName
-		}
+        tagName, tagOpts := parseTag(field.Tag.Get(s.TagName))
+        if tagName != "" {
+            name = tagName
+        }
 
-		// if the value is a zero value and the field is marked as omitempty do
-		// not include
-		if tagOpts.Has("omitempty") {
-			zero := reflect.Zero(val.Type()).Interface()
-			current := val.Interface()
+        if tagOpts.Has("camel") {
+            name = camelString(name)
+        }
+        if tagOpts.Has("underline") {
+            name = underlineString(name)
+        }
+        // if the value is a zero value and the field is marked as omitempty do
+        // not include
+        if tagOpts.Has("omitempty") {
+            zero := reflect.Zero(val.Type()).Interface()
+            current := val.Interface()
 
-			if reflect.DeepEqual(current, zero) {
-				continue
-			}
-		}
+            if reflect.DeepEqual(current, zero) {
+                continue
+            }
+        }
 
-		if !tagOpts.Has("omitnested") {
-			finalVal = s.nested(val)
+        if !tagOpts.Has("omitnested") {
+            finalVal = s.nested(val)
 
-			v := reflect.ValueOf(val.Interface())
-			if v.Kind() == reflect.Ptr {
-				v = v.Elem()
-			}
+            v := reflect.ValueOf(val.Interface())
+            if v.Kind() == reflect.Ptr {
+                v = v.Elem()
+            }
 
-			switch v.Kind() {
-			case reflect.Map, reflect.Struct:
-				isSubStruct = true
-			}
-		} else {
-			finalVal = val.Interface()
-		}
+            switch v.Kind() {
+            case reflect.Map, reflect.Struct:
+                isSubStruct = true
+            }
+        } else {
+            finalVal = val.Interface()
+        }
 
-		if tagOpts.Has("string") {
-			s, ok := val.Interface().(fmt.Stringer)
-			if ok {
-				out[name] = s.String()
-			}
-			continue
-		}
+        if tagOpts.Has("string") {
+            s, ok := val.Interface().(fmt.Stringer)
+            if ok {
+                out[name] = s.String()
+            }
+            continue
+        }
 
-		if isSubStruct && (tagOpts.Has("flatten")) {
-			for k := range finalVal.(map[string]interface{}) {
-				out[k] = finalVal.(map[string]interface{})[k]
-			}
-		} else {
-			out[name] = finalVal
-		}
-	}
+        if isSubStruct && (tagOpts.Has("flatten")) {
+            for k := range finalVal.(map[string]interface{}) {
+                out[k] = finalVal.(map[string]interface{})[k]
+            }
+        } else {
+            out[name] = finalVal
+        }
+    }
 }
 
 // Values converts the given s struct's field values to a []interface{}.  A
@@ -172,44 +178,44 @@ func (s *Struct) FillMap(out map[string]interface{}) {
 // Note that only exported fields of a struct can be accessed, non exported
 // fields  will be neglected.
 func (s *Struct) Values() []interface{} {
-	fields := s.structFields()
+    fields := s.structFields()
 
-	var t []interface{}
+    var t []interface{}
 
-	for _, field := range fields {
-		val := s.value.FieldByName(field.Name)
+    for _, field := range fields {
+        val := s.value.FieldByName(field.Name)
 
-		_, tagOpts := parseTag(field.Tag.Get(s.TagName))
+        _, tagOpts := parseTag(field.Tag.Get(s.TagName))
 
-		// if the value is a zero value and the field is marked as omitempty do
-		// not include
-		if tagOpts.Has("omitempty") {
-			zero := reflect.Zero(val.Type()).Interface()
-			current := val.Interface()
+        // if the value is a zero value and the field is marked as omitempty do
+        // not include
+        if tagOpts.Has("omitempty") {
+            zero := reflect.Zero(val.Type()).Interface()
+            current := val.Interface()
 
-			if reflect.DeepEqual(current, zero) {
-				continue
-			}
-		}
+            if reflect.DeepEqual(current, zero) {
+                continue
+            }
+        }
 
-		if tagOpts.Has("string") {
-			s, ok := val.Interface().(fmt.Stringer)
-			if ok {
-				t = append(t, s.String())
-			}
-			continue
-		}
+        if tagOpts.Has("string") {
+            s, ok := val.Interface().(fmt.Stringer)
+            if ok {
+                t = append(t, s.String())
+            }
+            continue
+        }
 
-		if IsStruct(val.Interface()) && !tagOpts.Has("omitnested") {
-			// look out for embedded structs, and convert them to a
-			// []interface{} to be added to the final values slice
-			t = append(t, Values(val.Interface())...)
-		} else {
-			t = append(t, val.Interface())
-		}
-	}
+        if IsStruct(val.Interface()) && !tagOpts.Has("omitnested") {
+            // look out for embedded structs, and convert them to a
+            // []interface{} to be added to the final values slice
+            t = append(t, Values(val.Interface())...)
+        } else {
+            t = append(t, val.Interface())
+        }
+    }
 
-	return t
+    return t
 }
 
 // Fields returns a slice of Fields. A struct tag with the content of "-"
@@ -220,7 +226,7 @@ func (s *Struct) Values() []interface{} {
 //
 // It panics if s's kind is not struct.
 func (s *Struct) Fields() []*Field {
-	return getFields(s.value, s.TagName)
+    return getFields(s.value, s.TagName)
 }
 
 // Names returns a slice of field names. A struct tag with the content of "-"
@@ -231,72 +237,72 @@ func (s *Struct) Fields() []*Field {
 //
 // It panics if s's kind is not struct.
 func (s *Struct) Names() []string {
-	fields := getFields(s.value, s.TagName)
+    fields := getFields(s.value, s.TagName)
 
-	names := make([]string, len(fields))
+    names := make([]string, len(fields))
 
-	for i, field := range fields {
-		names[i] = field.Name()
-	}
+    for i, field := range fields {
+        names[i] = field.Name()
+    }
 
-	return names
+    return names
 }
 
 func getFields(v reflect.Value, tagName string) []*Field {
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
+    if v.Kind() == reflect.Ptr {
+        v = v.Elem()
+    }
 
-	t := v.Type()
+    t := v.Type()
 
-	var fields []*Field
+    var fields []*Field
 
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
+    for i := 0; i < t.NumField(); i++ {
+        field := t.Field(i)
 
-		if tag := field.Tag.Get(tagName); tag == "-" {
-			continue
-		}
+        if tag := field.Tag.Get(tagName); tag == "-" {
+            continue
+        }
 
-		f := &Field{
-			field: field,
-			value: v.FieldByName(field.Name),
-		}
+        f := &Field{
+            field: field,
+            value: v.FieldByName(field.Name),
+        }
 
-		fields = append(fields, f)
+        fields = append(fields, f)
 
-	}
+    }
 
-	return fields
+    return fields
 }
 
 // Field returns a new Field struct that provides several high level functions
 // around a single struct field entity. It panics if the field is not found.
 func (s *Struct) Field(name string) *Field {
-	f, ok := s.FieldOk(name)
-	if !ok {
-		panic("field not found")
-	}
+    f, ok := s.FieldOk(name)
+    if !ok {
+        panic("field not found")
+    }
 
-	return f
+    return f
 }
 
 // FieldOk returns a new Field struct that provides several high level functions
 // around a single struct field entity. The boolean returns true if the field
 // was found.
 func (s *Struct) FieldOk(name string) (*Field, bool) {
-	t := s.value.Type()
+    t := s.value.Type()
 
-	field, ok := t.FieldByName(name)
-	if !ok {
-		return nil, false
-	}
+    field, ok := t.FieldByName(name)
+    if !ok {
+        return nil, false
+    }
 
-	return &Field{
-		field:      field,
-		value:      s.value.FieldByName(name),
-		defaultTag: s.TagName,
-	}, true
+    return &Field{
+        field:      field,
+        value:      s.value.FieldByName(name),
+        defaultTag: s.TagName,
+    }, true
 }
 
 // IsZero returns true if all fields in a struct is a zero value (not
@@ -316,34 +322,34 @@ func (s *Struct) FieldOk(name string) (*Field, bool) {
 // Note that only exported fields of a struct can be accessed, non exported
 // fields  will be neglected. It panics if s's kind is not struct.
 func (s *Struct) IsZero() bool {
-	fields := s.structFields()
+    fields := s.structFields()
 
-	for _, field := range fields {
-		val := s.value.FieldByName(field.Name)
+    for _, field := range fields {
+        val := s.value.FieldByName(field.Name)
 
-		_, tagOpts := parseTag(field.Tag.Get(s.TagName))
+        _, tagOpts := parseTag(field.Tag.Get(s.TagName))
 
-		if IsStruct(val.Interface()) && !tagOpts.Has("omitnested") {
-			ok := IsZero(val.Interface())
-			if !ok {
-				return false
-			}
+        if IsStruct(val.Interface()) && !tagOpts.Has("omitnested") {
+            ok := IsZero(val.Interface())
+            if !ok {
+                return false
+            }
 
-			continue
-		}
+            continue
+        }
 
-		// zero value of the given field, such as "" for string, 0 for int
-		zero := reflect.Zero(val.Type()).Interface()
+        // zero value of the given field, such as "" for string, 0 for int
+        zero := reflect.Zero(val.Type()).Interface()
 
-		//  current value of the given field
-		current := val.Interface()
+        //  current value of the given field
+        current := val.Interface()
 
-		if !reflect.DeepEqual(current, zero) {
-			return false
-		}
-	}
+        if !reflect.DeepEqual(current, zero) {
+            return false
+        }
+    }
 
-	return true
+    return true
 }
 
 // HasZero returns true if a field in a struct is not initialized (zero value).
@@ -363,222 +369,267 @@ func (s *Struct) IsZero() bool {
 // Note that only exported fields of a struct can be accessed, non exported
 // fields  will be neglected. It panics if s's kind is not struct.
 func (s *Struct) HasZero() bool {
-	fields := s.structFields()
+    fields := s.structFields()
 
-	for _, field := range fields {
-		val := s.value.FieldByName(field.Name)
+    for _, field := range fields {
+        val := s.value.FieldByName(field.Name)
 
-		_, tagOpts := parseTag(field.Tag.Get(s.TagName))
+        _, tagOpts := parseTag(field.Tag.Get(s.TagName))
 
-		if IsStruct(val.Interface()) && !tagOpts.Has("omitnested") {
-			ok := HasZero(val.Interface())
-			if ok {
-				return true
-			}
+        if IsStruct(val.Interface()) && !tagOpts.Has("omitnested") {
+            ok := HasZero(val.Interface())
+            if ok {
+                return true
+            }
 
-			continue
-		}
+            continue
+        }
 
-		// zero value of the given field, such as "" for string, 0 for int
-		zero := reflect.Zero(val.Type()).Interface()
+        // zero value of the given field, such as "" for string, 0 for int
+        zero := reflect.Zero(val.Type()).Interface()
 
-		//  current value of the given field
-		current := val.Interface()
+        //  current value of the given field
+        current := val.Interface()
 
-		if reflect.DeepEqual(current, zero) {
-			return true
-		}
-	}
+        if reflect.DeepEqual(current, zero) {
+            return true
+        }
+    }
 
-	return false
+    return false
 }
 
 // Name returns the structs's type name within its package. For more info refer
 // to Name() function.
 func (s *Struct) Name() string {
-	return s.value.Type().Name()
+    return s.value.Type().Name()
 }
 
 // structFields returns the exported struct fields for a given s struct. This
 // is a convenient helper method to avoid duplicate code in some of the
 // functions.
 func (s *Struct) structFields() []reflect.StructField {
-	t := s.value.Type()
+    t := s.value.Type()
 
-	var f []reflect.StructField
+    var f []reflect.StructField
 
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		// we can't access the value of unexported fields
-		if field.PkgPath != "" {
-			continue
-		}
+    for i := 0; i < t.NumField(); i++ {
+        field := t.Field(i)
+        // we can't access the value of unexported fields
+        if field.PkgPath != "" {
+            continue
+        }
 
-		// don't check if it's omitted
-		if tag := field.Tag.Get(s.TagName); tag == "-" {
-			continue
-		}
+        // don't check if it's omitted
+        if tag := field.Tag.Get(s.TagName); tag == "-" {
+            continue
+        }
 
-		f = append(f, field)
-	}
+        f = append(f, field)
+    }
 
-	return f
+    return f
 }
 
 func strctVal(s interface{}) reflect.Value {
-	v := reflect.ValueOf(s)
+    v := reflect.ValueOf(s)
 
-	// if pointer get the underlying element≤
-	for v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
+    // if pointer get the underlying element≤
+    for v.Kind() == reflect.Ptr {
+        v = v.Elem()
+    }
 
-	if v.Kind() != reflect.Struct {
-		panic("not struct")
-	}
+    if v.Kind() != reflect.Struct {
+        panic("not struct")
+    }
 
-	return v
+    return v
 }
 
 // Map converts the given struct to a map[string]interface{}. For more info
 // refer to Struct types Map() method. It panics if s's kind is not struct.
 func Map(s interface{}) map[string]interface{} {
-	return New(s).Map()
+    return New(s).Map()
 }
 
 // FillMap is the same as Map. Instead of returning the output, it fills the
 // given map.
 func FillMap(s interface{}, out map[string]interface{}) {
-	New(s).FillMap(out)
+    New(s).FillMap(out)
 }
 
 // Values converts the given struct to a []interface{}. For more info refer to
 // Struct types Values() method.  It panics if s's kind is not struct.
 func Values(s interface{}) []interface{} {
-	return New(s).Values()
+    return New(s).Values()
 }
 
 // Fields returns a slice of *Field. For more info refer to Struct types
 // Fields() method.  It panics if s's kind is not struct.
 func Fields(s interface{}) []*Field {
-	return New(s).Fields()
+    return New(s).Fields()
 }
 
 // Names returns a slice of field names. For more info refer to Struct types
 // Names() method.  It panics if s's kind is not struct.
 func Names(s interface{}) []string {
-	return New(s).Names()
+    return New(s).Names()
 }
 
 // IsZero returns true if all fields is equal to a zero value. For more info
 // refer to Struct types IsZero() method.  It panics if s's kind is not struct.
 func IsZero(s interface{}) bool {
-	return New(s).IsZero()
+    return New(s).IsZero()
 }
 
 // HasZero returns true if any field is equal to a zero value. For more info
 // refer to Struct types HasZero() method.  It panics if s's kind is not struct.
 func HasZero(s interface{}) bool {
-	return New(s).HasZero()
+    return New(s).HasZero()
 }
 
 // IsStruct returns true if the given variable is a struct or a pointer to
 // struct.
 func IsStruct(s interface{}) bool {
-	v := reflect.ValueOf(s)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
+    v := reflect.ValueOf(s)
+    if v.Kind() == reflect.Ptr {
+        v = v.Elem()
+    }
 
-	// uninitialized zero value of a struct
-	if v.Kind() == reflect.Invalid {
-		return false
-	}
+    // uninitialized zero value of a struct
+    if v.Kind() == reflect.Invalid {
+        return false
+    }
 
-	return v.Kind() == reflect.Struct
+    return v.Kind() == reflect.Struct
 }
 
 // Name returns the structs's type name within its package. It returns an
 // empty string for unnamed types. It panics if s's kind is not struct.
 func Name(s interface{}) string {
-	return New(s).Name()
+    return New(s).Name()
 }
 
 // nested retrieves recursively all types for the given value and returns the
 // nested value.
 func (s *Struct) nested(val reflect.Value) interface{} {
-	var finalVal interface{}
+    var finalVal interface{}
 
-	v := reflect.ValueOf(val.Interface())
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
+    v := reflect.ValueOf(val.Interface())
+    if v.Kind() == reflect.Ptr {
+        v = v.Elem()
+    }
 
-	switch v.Kind() {
-	case reflect.Struct:
-		n := New(val.Interface())
-		n.TagName = s.TagName
-		m := n.Map()
+    switch v.Kind() {
+    case reflect.Struct:
+        n := New(val.Interface())
+        n.TagName = s.TagName
+        m := n.Map()
 
-		// do not add the converted value if there are no exported fields, ie:
-		// time.Time
-		if len(m) == 0 {
-			finalVal = val.Interface()
-		} else {
-			finalVal = m
-		}
-	case reflect.Map:
-		// get the element type of the map
-		mapElem := val.Type()
-		switch val.Type().Kind() {
-		case reflect.Ptr, reflect.Array, reflect.Map,
-			reflect.Slice, reflect.Chan:
-			mapElem = val.Type().Elem()
-			if mapElem.Kind() == reflect.Ptr {
-				mapElem = mapElem.Elem()
-			}
-		}
+        // do not add the converted value if there are no exported fields, ie:
+        // time.Time
+        if len(m) == 0 {
+            finalVal = val.Interface()
+        } else {
+            finalVal = m
+        }
+    case reflect.Map:
+        // get the element type of the map
+        mapElem := val.Type()
+        switch val.Type().Kind() {
+        case reflect.Ptr, reflect.Array, reflect.Map,
+            reflect.Slice, reflect.Chan:
+            mapElem = val.Type().Elem()
+            if mapElem.Kind() == reflect.Ptr {
+                mapElem = mapElem.Elem()
+            }
+        }
 
-		// only iterate over struct types, ie: map[string]StructType,
-		// map[string][]StructType,
-		if mapElem.Kind() == reflect.Struct ||
-			(mapElem.Kind() == reflect.Slice &&
-				mapElem.Elem().Kind() == reflect.Struct) {
-			m := make(map[string]interface{}, val.Len())
-			for _, k := range val.MapKeys() {
-				m[k.String()] = s.nested(val.MapIndex(k))
-			}
-			finalVal = m
-			break
-		}
+        // only iterate over struct types, ie: map[string]StructType,
+        // map[string][]StructType,
+        if mapElem.Kind() == reflect.Struct ||
+            (mapElem.Kind() == reflect.Slice &&
+                mapElem.Elem().Kind() == reflect.Struct) {
+            m := make(map[string]interface{}, val.Len())
+            for _, k := range val.MapKeys() {
+                m[k.String()] = s.nested(val.MapIndex(k))
+            }
+            finalVal = m
+            break
+        }
 
-		// TODO(arslan): should this be optional?
-		finalVal = val.Interface()
-	case reflect.Slice, reflect.Array:
-		if val.Type().Kind() == reflect.Interface {
-			finalVal = val.Interface()
-			break
-		}
+        // TODO(arslan): should this be optional?
+        finalVal = val.Interface()
+    case reflect.Slice, reflect.Array:
+        if val.Type().Kind() == reflect.Interface {
+            finalVal = val.Interface()
+            break
+        }
 
-		// TODO(arslan): should this be optional?
-		// do not iterate of non struct types, just pass the value. Ie: []int,
-		// []string, co... We only iterate further if it's a struct.
-		// i.e []foo or []*foo
-		if val.Type().Elem().Kind() != reflect.Struct &&
-			!(val.Type().Elem().Kind() == reflect.Ptr &&
-				val.Type().Elem().Elem().Kind() == reflect.Struct) {
-			finalVal = val.Interface()
-			break
-		}
+        // TODO(arslan): should this be optional?
+        // do not iterate of non struct types, just pass the value. Ie: []int,
+        // []string, co... We only iterate further if it's a struct.
+        // i.e []foo or []*foo
+        if val.Type().Elem().Kind() != reflect.Struct &&
+            !(val.Type().Elem().Kind() == reflect.Ptr &&
+                val.Type().Elem().Elem().Kind() == reflect.Struct) {
+            finalVal = val.Interface()
+            break
+        }
 
-		slices := make([]interface{}, val.Len())
-		for x := 0; x < val.Len(); x++ {
-			slices[x] = s.nested(val.Index(x))
-		}
-		finalVal = slices
-	default:
-		finalVal = val.Interface()
-	}
+        slices := make([]interface{}, val.Len())
+        for x := 0; x < val.Len(); x++ {
+            slices[x] = s.nested(val.Index(x))
+        }
+        finalVal = slices
+    default:
+        finalVal = val.Interface()
+    }
 
-	return finalVal
+    return finalVal
+}
+
+// underlineString
+// convert XxYY to xx_y_y
+func underlineString(s string) string {
+    data := make([]byte, 0, len(s)*2)
+    j := false
+    num := len(s)
+    for i := 0; i < num; i++ {
+        d := s[i]
+        if i > 0 && d >= 'A' && d <= 'Z' && j {
+            data = append(data, '_')
+        }
+        if d != '_' {
+            j = true
+        }
+        data = append(data, d)
+    }
+    return strings.ToLower(string(data[:]))
+}
+
+// camelString
+// convert xx_y_y to XxYY
+func camelString(s string) string {
+    data := make([]byte, 0, len(s))
+    j := false
+    k := false
+    num := len(s) - 1
+    for i := 0; i <= num; i++ {
+        d := s[i]
+        if k == false && d >= 'A' && d <= 'Z' {
+            k = true
+        }
+        if d >= 'a' && d <= 'z' && (j || k == false) {
+            d = d - 32
+            j = false
+            k = true
+        }
+        if k && d == '_' && num > i && s[i+1] >= 'a' && s[i+1] <= 'z' {
+            j = true
+            continue
+        }
+        data = append(data, d)
+    }
+    return string(data[:])
 }
