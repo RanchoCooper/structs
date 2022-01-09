@@ -16,7 +16,7 @@ functions or improve the existing code.
 ## Install
 
 ```bash
-go get github.com/fatih/structs
+go get github.com/RanchoCooper/structs
 ```
 
 ## Usage and Examples
